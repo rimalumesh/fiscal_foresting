@@ -36,133 +36,109 @@ def load_data():
 
     df = pd.read_excel(BytesIO(resp.content))
 
-    # ── Clean numeric columns ──────────────────────────────────────────────────
-    exclude = ["nepali_date", "english_date", "np_date",
-               "fiscal_year", "day_of_year", "name_of_the_day"]
-    num_cols = [c for c in df.columns if c not in exclude]
-    df[num_cols] = (
-        df[num_cols]
+    # Clean numeric columns (same as your table_and_plot.py)
+    exclude_cols = ['nepali_date', 'english_date', 'np_date',
+                    'fiscal_year', 'day_of_year', 'name_of_the_day']
+    cols_to_clean = [c for c in df.columns if c not in exclude_cols]
+    df[cols_to_clean] = (
+        df[cols_to_clean]
         .astype(str)
-        .replace({",": "", " ": "", "%": ""}, regex=True)
+        .replace({',': '', ' ': '', '%': ''}, regex=True)
     )
-    df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce")
+    df[cols_to_clean] = df[cols_to_clean].apply(pd.to_numeric, errors='coerce')
 
-    # ── Filter current fiscal year ─────────────────────────────────────────────
-    df = df[df["fiscal_year"] == "2082_83"].copy()
+    # Filter current fiscal year
+    df = df[df['fiscal_year'] == "2082_83"]
     df = df.iloc[4:].reset_index(drop=True)
 
-    # ── Forward-fill zeros for percentage columns ──────────────────────────────
-    pct_cols = ["total_revenue_percentage", "total_expenditure_percentage",
-                "tax_percentage"]
-    df[pct_cols] = df[pct_cols].replace(0, np.nan)
-    df[pct_cols] = df[pct_cols].ffill()
+    # Forward fill zeros (same as your table_and_plot.py)
+    cols = ['total_revenue_percentage', 'total_expenditure_percentage']
+    df[cols] = df[cols].replace(0, np.nan)
+    df[cols] = df[cols].ffill()
 
     return df
 
 df = load_data()
 
-# ── Identify latest two rows ───────────────────────────────────────────────────
-latest      = df.iloc[-1]
-day_before  = df.iloc[-2]
+# ── Build summary table (exactly your logic from table_and_plot.py) ───────────
+last = df.iloc[-1]
 
-latest_label     = str(latest["nepali_date"])
-day_before_label = str(day_before["nepali_date"])
+summary_table = pd.DataFrame(
+    {
+        'Target Amount':      [last['total_revenue_target'],     last['total_expenditure_target']],
+        'Collection to Date': [last['total_revenue_upto_today'], last['total_expenditure_upto_today']],
+        'Percentage':         [last['total_revenue_percentage'], last['total_expenditure_percentage']],
+    },
+    index=['Revenue', 'Expenditure']
+)
 
-# ── Summary Table ──────────────────────────────────────────────────────────────
-st.subheader("📋 Revenue Summary")
+# Surplus / Deficit row
+surplus_deficit = summary_table.loc['Revenue'] - summary_table.loc['Expenditure']
+summary_table.loc['Surplus/Deficit'] = surplus_deficit
 
-def fmt(val):
-    """Format large numbers with commas."""
+# Format numbers
+def fmt_num(val):
     try:
         return f"{float(val):,.2f}"
     except:
         return val
 
-table_data = {
-    ("", "Metric"): ["Tax Revenue", "Total Revenue"],
+display_table = summary_table.copy()
+display_table['Target Amount']      = display_table['Target Amount'].apply(fmt_num)
+display_table['Collection to Date'] = display_table['Collection to Date'].apply(fmt_num)
+display_table['Percentage']         = display_table['Percentage'].apply(
+    lambda x: f"{float(x):.2f}%" if pd.notna(x) else x
+)
 
-    (day_before_label, "Actual"): [
-        fmt(day_before["tax_upto_today"]),
-        fmt(day_before["total_revenue_upto_today"]),
-    ],
-    (day_before_label, "Target"): [
-        fmt(day_before["tax_target"]),
-        fmt(day_before["total_revenue_target"]),
-    ],
+# ── Date context ───────────────────────────────────────────────────────────────
+st.caption(
+    f"📅 Data as of: **{last['nepali_date']}** (Nepali) | "
+    f"**{last['english_date']}** (English) | "
+    f"Day **{int(last['day_of_year'])}** of fiscal year"
+)
 
-    (latest_label, "Actual"): [
-        fmt(latest["tax_upto_today"]),
-        fmt(latest["total_revenue_upto_today"]),
-    ],
-    (latest_label, "Target"): [
-        fmt(latest["tax_target"]),
-        fmt(latest["total_revenue_target"]),
-    ],
-}
+# ── Table ──────────────────────────────────────────────────────────────────────
+st.subheader("📋 Revenue & Expenditure Summary")
+st.dataframe(display_table, use_container_width=True)
 
-summary_df = pd.DataFrame(table_data)
-summary_df.columns = pd.MultiIndex.from_tuples(summary_df.columns)
-summary_df = summary_df.set_index(("", "Metric"))
-summary_df.index.name = None
-
-st.dataframe(summary_df, use_container_width=True)
-
-# ── Achievement % cards ────────────────────────────────────────────────────────
 st.markdown("---")
-col1, col2, col3, col4 = st.columns(4)
-col1.metric(
-    label=f"Tax Achievement ({latest_label})",
-    value=f"{latest['tax_percentage']:.1f}%",
-)
-col2.metric(
-    label=f"Total Revenue Achievement ({latest_label})",
-    value=f"{latest['total_revenue_percentage']:.1f}%",
-)
-col3.metric(
-    label=f"Tax Achievement ({day_before_label})",
-    value=f"{day_before['tax_percentage']:.1f}%",
-)
-col4.metric(
-    label=f"Total Revenue Achievement ({day_before_label})",
-    value=f"{day_before['total_revenue_percentage']:.1f}%",
-)
 
-# ── Line Chart ─────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.subheader("📈 Actual vs Target Total Revenue (% of Annual Target)")
+# ── Line Chart (exactly your logic from table_and_plot.py) ────────────────────
+st.subheader("📈 Revenue vs Expenditure Percentage Over Time")
 
 fig = go.Figure()
 
 fig.add_trace(go.Scatter(
-    x=df["day_of_year"],
-    y=df["total_revenue_percentage"],
-    name="Actual Revenue %",
-    mode="lines+markers",
-    line=dict(color="#2ecc71", width=2),
+    x=df['day_of_year'],
+    y=df['total_revenue_percentage'],
+    name='Revenue %',
+    mode='lines+markers',
+    line=dict(color='#2ecc71', width=2),
     marker=dict(size=4),
-    hovertemplate="Day %{x}<br>Actual: %{y:.2f}%<extra></extra>",
+    hovertemplate='Day %{x}<br>Revenue: %{y:.2f}%<extra></extra>',
 ))
 
 fig.add_trace(go.Scatter(
-    x=df["day_of_year"],
-    y=[100] * len(df),           # straight 100% target line
-    name="Target (100%)",
-    mode="lines",
-    line=dict(color="#e74c3c", width=2, dash="dash"),
-    hovertemplate="Day %{x}<br>Target: 100%<extra></extra>",
+    x=df['day_of_year'],
+    y=df['total_expenditure_percentage'],
+    name='Expenditure %',
+    mode='lines+markers',
+    line=dict(color='#e74c3c', width=2),
+    marker=dict(size=4),
+    hovertemplate='Day %{x}<br>Expenditure: %{y:.2f}%<extra></extra>',
 ))
 
 fig.update_layout(
-    xaxis_title="Day of Fiscal Year",
-    yaxis_title="% of Annual Target",
-    hovermode="x unified",
-    legend=dict(orientation="h", y=1.08),
+    xaxis_title='Day of Fiscal Year',
+    yaxis_title='Percentage (%)',
+    hovermode='x unified',
+    legend=dict(orientation='h', y=1.08),
     height=450,
     margin=dict(l=40, r=20, t=40, b=40),
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    xaxis=dict(showgrid=True, gridcolor="#eee"),
-    yaxis=dict(showgrid=True, gridcolor="#eee"),
+    plot_bgcolor='rgba(0,0,0,0)',
+    paper_bgcolor='rgba(0,0,0,0)',
+    xaxis=dict(showgrid=True, gridcolor='#eee'),
+    yaxis=dict(showgrid=True, gridcolor='#eee'),
 )
 
 st.plotly_chart(fig, use_container_width=True)
