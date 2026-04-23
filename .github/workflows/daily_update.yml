@@ -1,0 +1,51 @@
+name: Daily Data Update
+
+on:
+  schedule:
+    - cron: '15 2 * * *'   # 8:00 AM Nepal Time (NPT = UTC+5:45) = 02:15 UTC
+  workflow_dispatch:         # allows manual trigger from GitHub UI anytime
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write        # needed to commit and push Excel back to repo
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install ChromeDriver
+        run: |
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+          wget -q "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION%%.*}" -O /tmp/version.txt
+          DRIVER_VERSION=$(cat /tmp/version.txt)
+          wget -q "https://chromedriver.storage.googleapis.com/${DRIVER_VERSION}/chromedriver_linux64.zip" -O /tmp/chromedriver.zip
+          unzip -q /tmp/chromedriver.zip -d /tmp/
+          sudo mv /tmp/chromedriver /usr/bin/chromedriver
+          sudo chmod +x /usr/bin/chromedriver
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run updater script
+        run: python updater.py
+
+      - name: Commit and push updated Excel
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add fiscal_dashboard_data.xlsx
+          git diff --staged --quiet || git commit -m "Auto-update: data for $(date +'%Y-%m-%d')"
+          git push
