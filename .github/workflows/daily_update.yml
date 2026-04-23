@@ -10,31 +10,23 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write        # needed to commit and push Excel back to repo
+      contents: write
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Chrome
+      - name: Install Chrome and ChromeDriver
         run: |
           sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
-
-      - name: Install ChromeDriver
-        run: |
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
-          wget -q "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION%%.*}" -O /tmp/version.txt
-          DRIVER_VERSION=$(cat /tmp/version.txt)
-          wget -q "https://chromedriver.storage.googleapis.com/${DRIVER_VERSION}/chromedriver_linux64.zip" -O /tmp/chromedriver.zip
-          unzip -q /tmp/chromedriver.zip -d /tmp/
-          sudo mv /tmp/chromedriver /usr/bin/chromedriver
-          sudo chmod +x /usr/bin/chromedriver
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+          chromedriver --version
+          chromium-browser --version
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
